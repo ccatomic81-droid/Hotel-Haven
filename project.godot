@@ -21,6 +21,7 @@ move_forward={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":8
 move_backward={"deadzone":0.2,"events":[Object(InputEventKey,"physical_keycode":83),Object(InputEventKey,"physical_keycode":4194322)]}
 
 [rendering]
+textures/vram_compression/import_etc2_astc=true
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 environment/defaults/default_clear_color=Color(0.75, 0.88, 0.94, 1)

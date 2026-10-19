@@ -20,3 +20,14 @@ GitHub Actions runs **Android APK (debug)** when changes are pushed to `main`.
 You may also run it manually using **Actions → Android APK (debug) → Run workflow**.
 
 This is a first playable prototype with original procedural graphics, not a copy of SayGames' artwork or assets. A public Play Store release requires additional testing, polishing and release signing.
+
+
+### v0.2 visual and gameplay update
+- Bright cutaway interiors, tiled floors, windows, sofas, headboards, reception props and warm lighting.
+- Bellhop uniforms, hats, gloves and animated walking limbs; player selection ring.
+- Guests queue separately, stay, leave dirty rooms and pay into visible cash stacks.
+- Walk beside reception to collect earnings; uncollected cash is saved across restarts.
+- Room walls, beds, reception desk and locked rooms block player movement.
+- Original procedural models and branding. This is an evolving four-room prototype, not a complete reproduction of another game.
+
+Run gameplay checks: `godot --headless --path . --script tests/gameplay_smoke.gd`.

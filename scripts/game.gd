@@ -33,6 +33,12 @@ var checkin_wait: float = 0.0
 var ui_time: float = 0.0
 var save_time: float = 25.0
 var saved_levels: Array = []
+var materials: Dictionary = {}
+var pending_cash: int = 0
+var cash_pile: Node3D
+var action_ring: MeshInstance3D
+var progress_label: Label
+var elapsed: float = 0.0
 
 func _ready() -> void:
     randomize()
@@ -42,7 +48,10 @@ func _ready() -> void:
     _refresh_ui()
 
 func _process(delta: float) -> void:
+    elapsed += delta
     _move_player(delta)
+    _animate_people(delta)
+    _collect_cash()
     _guests_tick(delta)
     _rooms_tick(delta)
     _cleaner_tick(delta)
@@ -62,9 +71,12 @@ func _process(delta: float) -> void:
         _save_progress()
 
 func _material(color: Color) -> StandardMaterial3D:
+    if materials.has(color):
+        return materials[color]
     var mat := StandardMaterial3D.new()
     mat.albedo_color = color
-    mat.roughness = 0.79
+    mat.roughness = 0.85
+    materials[color] = mat
     return mat
 
 func _box(parent: Node3D, location: Vector3, dimensions: Vector3, color: Color) -> void:
@@ -109,15 +121,36 @@ func _label3d(parent: Node3D, location: Vector3, content: String, color: Color =
     obj.no_depth_test = true
     parent.add_child(obj)
 
-func _character(outfit: Color, skin: Color) -> Node3D:
+func _character(outfit: Color, skin: Color, staff: bool = false) -> Node3D:
     var root := Node3D.new()
     add_child(root)
-    _cylinder(root, Vector3(0, 0.83, 0), 0.33, 0.93, outfit)
-    _ball(root, Vector3(0, 1.55, 0), 0.32, skin)
-    _box(root, Vector3(-0.18, 0.27, 0), Vector3(0.18, 0.52, 0.24), NAVY)
-    _box(root, Vector3(0.18, 0.27, 0), Vector3(0.18, 0.52, 0.24), NAVY)
-    _ball(root, Vector3(-0.39, 0.92, 0), 0.14, skin)
-    _ball(root, Vector3(0.39, 0.92, 0), 0.14, skin)
+    var rig := Node3D.new()
+    rig.name = "Rig"
+    root.add_child(rig)
+    _cylinder(rig, Vector3(0, 0.91, 0), 0.30, 0.72, outfit)
+    _ball(rig, Vector3(0, 1.51, 0), 0.30, skin)
+    _ball(rig, Vector3(0, 1.61, -0.08), 0.27, Color("493a43"))
+    for side in [-1.0, 1.0]:
+        var leg := Node3D.new()
+        leg.name = "LeftLeg" if side < 0 else "RightLeg"
+        leg.position = Vector3(side * 0.16, 0.61, 0)
+        rig.add_child(leg)
+        _cylinder(leg, Vector3(0, -0.22, 0), 0.105, 0.44, NAVY)
+        _box(leg, Vector3(0, -0.46, 0.06), Vector3(0.24, 0.12, 0.36), Color("293445"))
+        var arm := Node3D.new()
+        arm.name = "LeftArm" if side < 0 else "RightArm"
+        arm.position = Vector3(side * 0.34, 1.13, 0)
+        rig.add_child(arm)
+        _cylinder(arm, Vector3(0, -0.18, 0), 0.105, 0.36, outfit)
+        _ball(arm, Vector3(0, -0.40, 0), 0.12, Color("fff9ed") if staff else skin)
+        _ball(rig, Vector3(side * 0.10, 1.54, 0.27), 0.035, NAVY)
+    if staff:
+        _cylinder(rig, Vector3(0, 1.82, 0), 0.31, 0.17, outfit)
+        _cylinder(rig, Vector3(0, 1.75, 0.03), 0.35, 0.045, Color("ffcf66"))
+        for y in [0.80, 0.99, 1.17]:
+            _ball(rig, Vector3(0, y, 0.30), 0.035, Color("ffe29a"))
+    root.set_meta("last_position", root.position)
+    root.set_meta("phase", randf() * TAU)
     return root
 
 func _plant(parent: Node3D, x: float, z: float) -> void:
@@ -128,23 +161,38 @@ func _plant(parent: Node3D, x: float, z: float) -> void:
 func _build_world() -> void:
     var env := Environment.new()
     env.background_mode = Environment.BG_COLOR
-    env.background_color = Color("b9e9df")
+    env.background_color = Color("a8dfea")
     env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
     env.ambient_light_color = Color("fff9e6")
-    env.ambient_light_energy = 0.7
+    env.ambient_light_energy = 0.85
     var world := WorldEnvironment.new()
     world.environment = env
     add_child(world)
     var sun := DirectionalLight3D.new()
     sun.rotation_degrees = Vector3(-50, -35, 0)
-    sun.light_energy = 1.3
+    sun.light_energy = 1.0
+    sun.shadow_enabled = true
+    sun.directional_shadow_max_distance = 45.0
     add_child(sun)
-    _box(self, Vector3(0, -0.45, 0), Vector3(26, 0.7, 19), Color("5acda9"))
+    _box(self, Vector3(0, -0.45, 0), Vector3(26, 0.7, 19), Color("62caa1"))
     _box(self, Vector3(0, -0.1, 0), Vector3(23, 0.12, 16), Color("fff1de"))
-    _box(self, Vector3(0, 0, 3.1), Vector3(22, 0.07, 7.3), Color("e7d1b4"))
+    for tx in range(-11, 12):
+        for tz in range(-7, 8):
+            if (tx + tz) % 2 == 0:
+                _box(self, Vector3(tx, -0.025, tz), Vector3(0.98, 0.015, 0.98), Color("f6e7cd"))
+    _box(self, Vector3(0, 0, 3.1), Vector3(22, 0.07, 7.3), Color("df758b"))
     _box(self, Vector3(-8.2, 0.48, 2.2), Vector3(3.2, 0.95, 0.9), Color("af795a"))
     _box(self, Vector3(-8.2, 0.99, 2.2), Vector3(3.3, 0.13, 1), Color("f9d8ac"))
-    _label3d(self, Vector3(-8.2, 2.15, 2.2), "RECEPTION")
+    _label3d(self, Vector3(-8.2, 2.15, 2.2), "CHECK IN", Color("ffffff"))
+    _box(self, Vector3(-8.4, 1.16, 2.2), Vector3(0.7, 0.3, 0.45), NAVY)
+    _ball(self, Vector3(-7.2, 1.15, 2.3), 0.13, Color("ffce5e"))
+    _box(self, Vector3(0, 0.08, 2.2), Vector3(22, 0.05, 0.12), Color("f7c97c"))
+    _box(self, Vector3(0, 0.08, 5.8), Vector3(22, 0.05, 0.12), Color("f7c97c"))
+    for x in [-2.0, 3.3, 8.2]:
+        _sofa(self, Vector3(x, 0, 5.5), Color("49a9b1"))
+    cash_pile = Node3D.new()
+    add_child(cash_pile)
+    _update_cash_pile()
     _box(self, Vector3(0, 0.2, 4.2), Vector3(3.1, 0.13, 2.6), Color("a0decd"))
     _plant(self, -4.0, 5.2)
     _plant(self, 4.2, 5.4)
@@ -161,16 +209,24 @@ func _build_world() -> void:
             level = clampi(int(saved_levels[i]), 0, 3)
         rooms.append({"state": state, "level": level, "time": 0.0, "clean": 0.0})
         _refresh_room(i)
-    player = _character(Color("f39c72"), Color("ffd5a9"))
+    player = _character(Color("eb6573"), Color("ffd5a9"), true)
     player.position = Vector3(-5, 0.04, 4.8)
-    cleaner = _character(Color("66a9db"), Color("e9bc96"))
+    cleaner = _character(Color("66a9db"), Color("e9bc96"), true)
     cleaner.position = Vector3(0.8, 0.04, 4.9)
     cleaner.visible = hired
+    action_ring = MeshInstance3D.new()
+    var ring := TorusMesh.new()
+    ring.inner_radius = 0.55
+    ring.outer_radius = 0.65
+    action_ring.mesh = ring
+    action_ring.material_override = _material(Color("ffe49b"))
+    player.add_child(action_ring)
+    action_ring.position.y = 0.07
     camera = Camera3D.new()
     camera.projection = Camera3D.PROJECTION_ORTHOGONAL
     camera.keep_aspect = Camera3D.KEEP_HEIGHT
     camera.size = 27.0
-    camera.position = player.position + Vector3(14, 21, 22)
+    camera.position = player.position + Vector3(4, 25, 18)
     add_child(camera)
     camera.current = true
     camera.look_at(player.position, Vector3.UP)
@@ -182,25 +238,39 @@ func _refresh_room(i: int) -> void:
     var x: float = float(ROOM_X[i])
     var room: Dictionary = rooms[i]
     var closed: bool = room["state"] == "locked"
-    var tile := Color("d2ded7") if closed else Color("f9dfd9")
+    var tile := Color("b6cdc9") if closed else Color("ffe8ae")
     if int(room["level"]) > 0:
         tile = Color("e6d6fa")
     _box(root, Vector3(x, 0.05, -3.8), Vector3(4.9, 0.15, 6.15), tile)
-    _box(root, Vector3(x, 1, -6.88), Vector3(4.9, 2, 0.2), Color("f4d1ba"))
-    _box(root, Vector3(x - 2.42, 0.8, -3.85), Vector3(0.15, 1.6, 6), Color("f4d1ba"))
-    _box(root, Vector3(x + 2.42, 0.8, -3.85), Vector3(0.15, 1.6, 6), Color("f4d1ba"))
+    _box(root, Vector3(x, 1, -6.88), Vector3(4.9, 2, 0.2), Color("59bbc7"))
+    _box(root, Vector3(x - 2.42, 0.8, -3.85), Vector3(0.15, 1.6, 6), Color("59bbc7"))
+    _box(root, Vector3(x + 2.42, 0.8, -3.85), Vector3(0.15, 1.6, 6), Color("59bbc7"))
+    _box(root, Vector3(x, 2.04, -6.88), Vector3(4.95, 0.13, 0.26), Color("c2faf0"))
+    _box(root, Vector3(x, 1.2, -6.75), Vector3(1.5, 0.85, 0.06), Color("a7e7f2"))
+    _box(root, Vector3(x, 1.2, -6.70), Vector3(0.06, 0.9, 0.06), Color("ffffff"))
+    for side in [-1.0, 1.0]:
+        _box(root, Vector3(x + side * 1.8, 0.65, -0.82), Vector3(1.2, 1.3, 0.20), Color("59bbc7"))
+        _box(root, Vector3(x + side * 1.14, 0.65, -0.82), Vector3(0.12, 1.4, 0.26), Color("ffdf96"))
     if closed:
         _box(root, Vector3(x, 0.25, -3.7), Vector3(2.8, 0.4, 3), Color("b6ceca"))
-        _label3d(root, Vector3(x, 2.3, -3), "ROOM %d\nLOCKED" % (i + 1), Color("44827b"))
+        _label3d(root, Vector3(x, 2.3, -3), "BUILD ROOM %d\n$%d" % [i + 1, int(ROOM_COST[i])], Color("44827b"))
         return
-    _box(root, Vector3(x, 0.37, -4.25), Vector3(2.4, 0.44, 3.2), Color("d8a086"))
+    _box(root, Vector3(x, 0.37, -4.25), Vector3(2.4, 0.44, 3.2), Color("ba8058"))
     _box(root, Vector3(x, 0.62, -4.25), Vector3(2.22, 0.18, 3.03), Color("f7fbff"))
-    _box(root, Vector3(x, 0.75, -5.15), Vector3(2.18, 0.16, 1.05), Color("a8dedb"))
+    _box(root, Vector3(x, 0.75, -5.15), Vector3(2.18, 0.16, 1.05), Color("608be4"))
     _box(root, Vector3(x - 0.55, 0.84, -5.25), Vector3(0.85, 0.16, 0.6), Color("fff9e8"))
     _box(root, Vector3(x + 0.55, 0.84, -5.25), Vector3(0.85, 0.16, 0.6), Color("fff9e8"))
     _box(root, Vector3(x + 1.73, 0.33, -5.5), Vector3(0.58, 0.65, 0.6), Color("c8917c"))
     _ball(root, Vector3(x + 1.73, 0.79, -5.5), 0.22, Color("ffdf8f"))
+    _box(root, Vector3(x, 0.9, -5.9), Vector3(2.5, 0.95, 0.18), Color("bd855d"))
+    _box(root, Vector3(x, 0.17, -3.8), Vector3(3.5, 0.04, 4.4), Color("f5c97f"))
+    _box(root, Vector3(x - 1.8, 0.8, -4.9), Vector3(0.1, 0.8, 1.1), NAVY)
     _plant(root, x - 1.8, -2.1)
+    if room["state"] == "occupied":
+        _ball(root, Vector3(x, 0.97, -5.15), 0.25, Color("efc49e"))
+    if room["state"] == "dirty":
+        for n in range(4):
+            _ball(root, Vector3(x - 1.3 + n * 0.72, 0.16, -1.5), 0.15, Color("bba18a"))
     var status: String = "READY"
     var status_color: Color = TEAL
     if room["state"] == "occupied":
@@ -210,7 +280,7 @@ func _refresh_room(i: int) -> void:
         status = "CLEAN ME!"
         status_color = Color("e96f6f")
         _box(root, Vector3(x, 0.8, -3.7), Vector3(2, 0.14, 1.5), Color("e2a393"))
-    _label3d(root, Vector3(x, 2.45, -3.0), "ROOM %d\n%s" % [i + 1, status], status_color)
+    _label3d(root, Vector3(x, 2.45, -3.0), "%d • %s" % [101 + i, status], status_color)
 
 func _free_room() -> int:
     for i in range(ROOM_COUNT):
@@ -238,10 +308,13 @@ func _guests_tick(delta: float) -> void:
         var person: Node3D = guest["node"]
         match guest["state"]:
             "arriving":
-                if _move_towards(person, Vector3(-5.8, 0.04, 4.65), delta, 2.8):
+                var place: int = _queue_index(index)
+                if _move_towards(person, Vector3(-5.8 + place * 1.0, 0.04, 4.65), delta, 2.8):
                     guest["state"] = "waiting"
             "waiting":
-                if player.position.distance_to(Vector3(-7, 0.04, 4.6)) < 2.9 and checkin_wait <= 0:
+                var place: int = _queue_index(index)
+                _move_towards(person, Vector3(-5.8 + place * 1.0, 0.04, 4.65), delta, 2.8)
+                if place == 0 and player.position.distance_to(Vector3(-7, 0.04, 4.6)) < 2.9 and checkin_wait <= 0:
                     var room_id := _free_room()
                     if room_id >= 0:
                         guest["room"] = room_id
@@ -271,7 +344,8 @@ func _guests_tick(delta: float) -> void:
             "leaving":
                 if _move_towards(person, Vector3(11, 0.04, 5.7), delta, 3.3):
                     var tip: int = 27 + decor_level * 13
-                    money += tip
+                    pending_cash += tip
+                    _update_cash_pile()
                     served += 1
                     _save_progress()
                     person.queue_free()
@@ -296,10 +370,15 @@ func _move_player(delta: float) -> void:
     direction = direction.limit_length(1.0)
     if direction.length() > 0.06:
         var step := Vector3(direction.x, 0, direction.y) * delta * (4.8 + speed_level * 0.7)
-        player.position.x = clampf(player.position.x + step.x, -10.6, 10.6)
-        player.position.z = clampf(player.position.z + step.z, -5.8, 6.65)
+        var next := player.position + step
+        next.x = clampf(next.x, -10.6, 10.6)
+        next.z = clampf(next.z, -5.8, 6.65)
+        if _walkable(Vector3(next.x, player.position.y, player.position.z)):
+            player.position.x = next.x
+        if _walkable(Vector3(player.position.x, player.position.y, next.z)):
+            player.position.z = next.z
         player.rotation.y = lerp_angle(player.rotation.y, atan2(step.x, step.z), minf(delta * 12, 1))
-    var goal := player.position + Vector3(14, 21, 22)
+    var goal := player.position + Vector3(4, 25, 18)
     camera.position = camera.position.lerp(goal, minf(delta * 4.3, 1))
     camera.look_at(player.position + Vector3(0, 0.4, 0), Vector3.UP)
     var size := get_viewport().get_visible_rect().size
@@ -449,7 +528,7 @@ func _build_interface() -> void:
 
 func _refresh_ui() -> void:
     cash_label.text = "$%d" % money
-    info_label.text = "%d / 4 rooms     •     %d guests served" % [unlocked, served]
+    info_label.text = "★ %d     •     %d / 4 rooms     •     %d guests" % [1 + served / 10, unlocked, served]
     var dirty: int = 0
     var waiting: int = 0
     for room in rooms:
@@ -458,12 +537,14 @@ func _refresh_ui() -> void:
     for guest in guests:
         if guest["state"] == "waiting":
             waiting += 1
-    if dirty > 0:
+    if pending_cash > 0:
+        hint_label.text = "Collect $%d beside reception!" % pending_cash
+    elif dirty > 0:
         hint_label.text = "Clean dirty rooms to welcome new guests!"
     elif waiting > 0:
         hint_label.text = "Stand near RECEPTION to check in guests!"
     else:
-        hint_label.text = "Serve guests, earn cash, expand your hotel!"
+        hint_label.text = "Check in guests • Clean rooms • Collect cash"
     if unlocked < ROOM_COUNT:
         room_button.text = "OPEN ROOM   $%d" % int(ROOM_COST[unlocked])
     else:
@@ -528,6 +609,7 @@ func _load_progress() -> void:
     if not (data is Dictionary):
         return
     money = maxi(0, int(data.get("money", 40)))
+    pending_cash = maxi(0, int(data.get("pending_cash", 0)))
     served = maxi(0, int(data.get("served", 0)))
     unlocked = clampi(int(data.get("unlocked", 1)), 1, ROOM_COUNT)
     hired = bool(data.get("hired", false))
@@ -541,7 +623,7 @@ func _save_progress() -> void:
     var lv: Array = []
     for room in rooms:
         lv.append(int(room["level"]))
-    var data := {"money": money, "served": served, "unlocked": unlocked, "hired": hired, "speed": speed_level, "decor": decor_level, "levels": lv}
+    var data := {"pending_cash": pending_cash, "money": money, "served": served, "unlocked": unlocked, "hired": hired, "speed": speed_level, "decor": decor_level, "levels": lv}
     var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
     if file != null:
         file.store_string(JSON.stringify(data))
@@ -549,3 +631,70 @@ func _save_progress() -> void:
 func _notification(what: int) -> void:
     if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED:
         _save_progress()
+
+func _sofa(parent: Node3D, location: Vector3, color: Color) -> void:
+    _box(parent, location + Vector3(0, 0.43, 0), Vector3(2.2, 0.65, 0.9), color)
+    _box(parent, location + Vector3(0, 0.91, 0.3), Vector3(2.2, 0.65, 0.25), color)
+    for side in [-1.0, 1.0]:
+        _box(parent, location + Vector3(side * 1.0, 0.77, 0), Vector3(0.25, 0.4, 0.9), color.lightened(0.15))
+        _box(parent, location + Vector3(side * 0.48, 0.78, 0), Vector3(0.8, 0.12, 0.65), color.lightened(0.12))
+
+func _queue_index(index: int) -> int:
+    var count: int = 0
+    for i in range(index):
+        if guests[i]["state"] in ["waiting", "arriving"]:
+            count += 1
+    return count
+
+func _walkable(point: Vector3) -> bool:
+    # Room partitions and beds block movement; open doorways stay accessible.
+    if point.z < -0.8:
+        var room_id: int = clampi(int(floor((point.x + 10.0) / 5.0)), 0, ROOM_COUNT - 1)
+        if room_id >= unlocked:
+            return false
+        var center: float = float(ROOM_X[room_id])
+        if absf(point.x - center) > 1.98:
+            return false
+        if absf(point.x - center) < 1.5 and point.z < -2.3:
+            return false
+    if point.x > -10.1 and point.x < -6.2 and point.z > 1.3 and point.z < 3.1:
+        return false
+    return true
+
+func _animate_people(_delta: float) -> void:
+    var people: Array = [player, cleaner]
+    for guest in guests:
+        people.append(guest["node"])
+    for person in people:
+        var last: Vector3 = person.get_meta("last_position", person.position)
+        var moving: bool = person.position.distance_to(last) > 0.001
+        var rig: Node3D = person.get_node("Rig")
+        var phase: float = elapsed * 12.0 + float(person.get_meta("phase", 0.0))
+        var swing: float = sin(phase) * 0.55 if moving else 0.0
+        rig.position.y = absf(sin(phase)) * 0.065 if moving else 0.0
+        rig.get_node("LeftLeg").rotation.x = swing
+        rig.get_node("RightLeg").rotation.x = -swing
+        rig.get_node("LeftArm").rotation.x = -swing * 0.65
+        rig.get_node("RightArm").rotation.x = swing * 0.65
+        person.set_meta("last_position", person.position)
+    action_ring.scale = Vector3.ONE * (1.0 + sin(elapsed * 4.0) * 0.05)
+
+func _update_cash_pile() -> void:
+    for child in cash_pile.get_children():
+        child.queue_free()
+    if pending_cash <= 0:
+        return
+    for n in range(mini(12, ceili(pending_cash / 15.0))):
+        var pos := Vector3(-9.7 + (n % 2) * 0.6, 0.15 + (n / 4) * 0.18, 3.6 + ((n / 2) % 2) * 0.4)
+        _box(cash_pile, pos, Vector3(0.5, 0.16, 0.32), Color("4bd989"))
+        _box(cash_pile, pos + Vector3(0, 0.085, 0), Vector3(0.13, 0.02, 0.33), Color("fff5ce"))
+    _label3d(cash_pile, Vector3(-9.3, 1.6, 3.8), "$%d" % pending_cash, Color("ffffff"))
+
+func _collect_cash() -> void:
+    if pending_cash <= 0 or player.position.distance_to(Vector3(-9.3, 0.04, 3.8)) > 1.6:
+        return
+    money += pending_cash
+    pending_cash = 0
+    _update_cash_pile()
+    _save_progress()
+    _refresh_ui()

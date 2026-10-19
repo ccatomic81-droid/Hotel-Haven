@@ -49,6 +49,11 @@ jobs:
           set -o pipefail
           godot --headless --path . --quit-after 5 --verbose 2>&1 | tee smoke.log
           if grep -E '(SCRIPT ERROR|Parse Error|ERROR: Cannot)' smoke.log; then exit 1; fi
+      - name: Test hotel gameplay
+        run: |
+          set -o pipefail
+          godot --headless --path . --script tests/gameplay_smoke.gd 2>&1 | tee gameplay.log
+          if grep -E '(SCRIPT ERROR|Parse Error|Assertion failed)' gameplay.log; then exit 1; fi
       - name: Create Android signing configuration
         run: |
           mkdir -p "$HOME/.android" "$HOME/.config/godot"

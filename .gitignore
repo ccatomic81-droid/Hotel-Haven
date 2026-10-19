@@ -1,0 +1,6 @@
+.godot/
+builds/
+*.apk
+*.aab
+*.keystore
+.DS_Store

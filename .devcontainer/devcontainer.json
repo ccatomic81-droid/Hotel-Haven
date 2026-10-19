@@ -1,0 +1,9 @@
+{
+  "name": "Hotel Haven - Godot 4",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+  "customizations": {
+    "vscode": {
+      "extensions": ["geequlim.godot-tools"]
+    }
+  }
+}
